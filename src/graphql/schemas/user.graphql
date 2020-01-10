@@ -1,0 +1,40 @@
+type UserMembership {
+  username: String
+  memberType: String
+  applications: Int
+}
+
+type User {
+  username: String
+  id: String
+  fullName: String
+  firstName: String
+  lastName: String
+  preferredView: String
+  description: String
+  email: String
+  userType: String
+  idpUsername: String
+  favGroupId: String
+  lastLogin: Int
+  mfaEnabled: Boolean
+  access: String
+  storageUsage: Int
+  storageQuota: Int
+  orgId: String
+  role: String
+  level: String
+  userLicenseTypeId: String
+  disabled: Boolean
+  culture: String
+  cultureFormat: String
+  region: String
+  units: String
+  thumbnail: String
+  created: Int
+  modified: Int
+  provider: String
+  groups: [Group]
+  tags: [String]
+  privileges: [String]
+}

@@ -1,0 +1,51 @@
+type ExtentBBOX [Int]
+
+type Query {
+
+}
+
+type Mutation {
+  createItem()
+  deleteItem(id: String!, owner: String!)
+}
+
+type Item {
+  id: String
+  owner: String
+  created: Int
+  isOrgItem: Boolean
+  modified: Int
+  guid: String
+  name: String
+  title: String
+  type: String
+  description: String
+  snippet: String
+  thumbnail: String
+  documentation: String
+  spatialReference: String
+  accessInformation: String
+  licenseInfo: String
+  culture: String
+  properties: String
+  url: String
+  proxyFilter: String
+  access: String
+  size: Int
+  largeThumbnail: String
+  banner: String
+  listed: Boolean
+  ownerFolder: String
+  protected: Boolean
+  commentsEnabled: Boolean
+  itemControl: String
+  groupDesignations: String
+  screenshots: [String]
+  languages: [String]
+  industries: [String]
+  appCategories: [String]
+  categories: [String]
+  extent: [ExtentBBOX]
+  tags: [String]
+  typeKeywords: [String]
+}

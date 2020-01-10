@@ -24,7 +24,7 @@ exports.resolvers = {
       return get(url);
     },
   },
-  User: {
+  User: { 
     posts: parent => {
       const { id } = parent;
       const url = `${blogBaseURL}/users/${id}/posts`;
