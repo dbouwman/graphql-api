@@ -1,6 +1,7 @@
 node_modules
 .elasticbeanstalk/
 todo.md
+.env
 
 # Elastic Beanstalk Files
 .elasticbeanstalk/*

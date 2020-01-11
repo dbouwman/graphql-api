@@ -1,5 +1,6 @@
 require("cross-fetch/polyfill");
 require("isomorphic-form-data");
+require('dotenv').config()
 
 const { GraphQLServer } = require('graphql-yoga')
 
@@ -14,6 +15,10 @@ const {
   getGroup, 
   searchGroups
 } = require("@esri/arcgis-rest-portal");
+
+const {
+  UserSession
+} = require("@esri/arcgis-rest-auth");
 
 const typeDefs = require('./schema.js');
 
@@ -31,7 +36,7 @@ const getSession = (ctx) => {
     // we need to cook up a fake IAuthManager object that we can huck thru 
     // rest js, but does not require actual creds.)
     ro.authentication = {
-      portal: 'https://www.arcgis.com/sharing/rest',
+      portal: process.env.PORTAL,
       getToken: () => {
         console.info(`getToken called. Returning ${ctx.request.headers.authorization}`);
         return Promise.resolve(ctx.request.headers.authorization);
@@ -48,13 +53,22 @@ const getSession = (ctx) => {
  * @param {object} ctx context
  */
 const get = (url, ctx) => {
-  log(url);
   const token = ctx.request.headers.authorization;
   if (token) {
     url = `${url}&token=${token}`;
   }
   return fetch(url)
-  .then(res => res.json());
+    .then(res => res.json());
+};
+
+/**
+ * Log out the size of a response in bytes
+ * @param {object} content 
+ * @param {string} name 
+ */
+const logBytes = (content, name)  => {
+  const sizeInBytes = new TextEncoder().encode(JSON.stringify(content)).length;
+  console.log(`${name} response: ${sizeInBytes}`);
 };
 
 /**
@@ -62,18 +76,39 @@ const get = (url, ctx) => {
  */
 const resolvers = {
   Query: {
-    info: () => `Start of the start of a GraphQL wrapper for Portal API`,
+    // Fetch a fresh token for an embedded user - purely to make demoing simpler
+    quickToken: () => {
+      let session = new UserSession({
+        username: process.env.USER,
+        password: process.env.PASS
+      });
+      console.log(`Getting token for ${process.env.USER} from ${process.env.PORTAL}`);
+      return session.getToken(process.env.PORTAL)
+      .then((result) => {
+        return `{ authorization: ${result} }`;
+      });
+    },
     item: (parent, args = {}, ctx) => {
       let ro = getSession(ctx);
-      return getItem(args.id, ro);
+      return getItem(args.id, ro)
+      .then(r => {
+        logBytes(r, 'Item');
+        return r;
+      })
     },
     searchItems: (parent, args = {}, ctx) => {
       let ro = getSession(ctx);
       if (ro) {
         ro.q = args.query;
-        return searchItems(ro).then(r => r.results);
+        return searchItems(ro).then(r => {
+          logBytes(r, 'Search')
+          return r.results
+        });
       } else {
-        return searchItems(args.query).then(r => r.results);
+        return searchItems(args.query).then(r => {
+          logBytes(r, 'Search')
+          return r.results
+        });
       }
       
     },
@@ -84,7 +119,7 @@ const resolvers = {
       
       return getUser(ro)
       .then(r => {
-        console.info(`Response: ${JSON.stringify(r)}`);
+        logBytes(r, 'User');
         return r;
       })
       .catch(err => {
@@ -93,10 +128,17 @@ const resolvers = {
       })
     },
     searchUsers: (parent, args = {}, ctx) => {
-      return searchUsers(args.query).then(r => r.results);
+      return searchUsers(args.query).then(r => {
+        logBytes(r, 'Users Search');
+        return r.results
+      });
     },
     group: (parent, args = {}, ctx) => {
-      return getGroup(args.id);
+      return getGroup(args.id)
+      .then(r => {
+        logBytes(r, 'Group');
+        return r
+      });
     },
     searchGroups: (parent, args = {}, ctx) => {
       return searchGroups(args.query).then(r => r.results);
@@ -123,12 +165,17 @@ const resolvers = {
 
       const query = qParts.join(' AND ');
       let ro = getSession(ctx);
+      let prms;
       if (ro) {
         ro.q = query;
-        return searchItems(ro).then(r => r.results);
+        prms = searchItems(ro);
       } else {
-        return searchItems(query).then(r => r.results);
+        prms = searchItems(query);
       }
+      return prms.then((r) => {
+        logBytes(r, 'Survey Search');
+        return r.results;
+      });
     },
     survey: (parent, args, ctx) => {
       console.log('\n\rGot request for survey');
@@ -141,11 +188,10 @@ const resolvers = {
     ownerUsername: (parent) => parent.owner,
     owner: (parent, args, ctx) => {
       let ro = getSession(ctx) || {};
-      console.info(`Getting user for ${parent.owner}`);
       ro.username = parent.owner;
       return getUser(ro)
       .then(r => {
-        console.info(`Response: ${JSON.stringify(r)}`);
+        logBytes(r, 'Owner');        
         return r;
       })
       .catch((err) => {
@@ -164,6 +210,7 @@ const resolvers = {
       let ro = getSession(ctx);
       return getItemGroups(parent.id, ro)
         .then((response) => {
+          logBytes(r, 'Item Groups'); 
           return [...response.admin, ...response.member, ...response.other];
         });
     },
@@ -207,11 +254,10 @@ const resolvers = {
     id: (parent) => parent.id,
     owner: (parent, args, ctx) => {
       let ro = getSession(ctx) || {};
-      console.info(`Getting user for ${parent.owner}`);
       ro.username = parent.owner;
       return getUser(ro)
       .then(r => {
-        console.info(`Response: ${JSON.stringify(r)}`);
+        logBytes(r, 'Owner');     
         return r;
       })
       .catch((err) => {
@@ -244,17 +290,19 @@ const resolvers = {
   Survey: {
     owner: (parent, args, ctx) => {
       let ro = getSession(ctx) || {};
-      console.info(`Getting user for ${parent.owner}`);
       ro.username = parent.owner;
       return getUser(ro)
       .then(r => {
-        console.info(`Response: ${JSON.stringify(r)}`);
+        logBytes(r, 'Survey Owner');     
         return r;
       })
       .catch((err) => {
         console.info(`Error: ${err}`);
         return err
       })
+    },
+    modifiedISO: (parent) => {
+      return new Date(parent.created).toISOString();
     },
     formInfo: (parent, args, ctx) => {
       if (parent.typeKeywords.includes('Draft')) {
@@ -264,12 +312,74 @@ const resolvers = {
       }
 
       const { id } = parent;
-      const url = `${agoBaseUrl}/content/items/${id}/info/form.json?f=json`;
+      const url = `${process.env.PORTAL}/content/items/${id}/info/form.json?f=json`;
       return get(url, ctx)
       .then(resp => {
+        logBytes(resp, 'Form Info');     
         return resp.settings.openStatusInfo;
       });
+    },
+    service: (parent, args, ctx) => {
+      // use the if of the parent to query for related items using Survey2Service type
+      const { id } = parent;
+      const url = `${process.env.PORTAL}/content/items/${id}/relatedItems?f=json&relationshipType=Survey2Service`;
+      return get(url, ctx)
+      .then(resp => {
+        logBytes(resp, 'Related Survey2Service');   
+        if (resp.relatedItems.length) {
+          return resp.relatedItems[0];
+        }
+      })
+      .catch((ex) => {
+        console.dir(ex);
+      });
     }
+  },
+  FeatureService: {
+    layers: (parent, args, ctx) => {
+      if (parent.url) {
+        return get(`${parent.url}?f=json`, ctx).then((resp) => {
+          // for convenience, add url prop for layer
+          return resp.layers.map(l => {
+            l.url = `${parent.url}/${l.id}`; 
+            return l;
+          })
+        }) 
+      } else {
+        console.log(`Parent does not have url`);
+        return [];
+      }
+
+    },
+    
+  },
+
+  Layer: {
+    totalRecords: (parent, args, ctx) => {
+      if (parent.url) {
+        return get(`${parent.url}/query?f=json&returnGeometry=false&where=1=1&returnCountOnly=true`, ctx)
+        .then((r) => { 
+          logBytes(r, 'Record Count');   
+          return r.count 
+        })
+        .catch(_ => 0);
+      } else {
+        return 0;
+      }
+    },
+    lastEntry: (parent, args, ctx) => {
+      if (parent.url) {
+        return get(`${parent.url}/query?outStatistics=[{"statisticType": "max","onStatisticField": "CreationDate", "outStatisticFieldName": "LastEdit"}]&where=1=1&f=json`, ctx)
+        .then((r) => { 
+          logBytes(r, 'Last Entry');   
+          let ts = r.features[0].attributes.LastEdit; 
+          return new Date(ts).toISOString()
+        })
+        .catch(_ => 'No Data');
+      } else {
+        return 'No Data';
+      }
+    },
   }
 };
 
@@ -294,4 +404,7 @@ const opts = {
 };
 
 // Start it up...
-server.start(opts, _ => console.log(`Server is running on http://localhost:4000`))
+server.start(opts, _ => {
+  console.log(`Starting server pointing at ${process.env.PORTAL}`);
+  console.log(`Server is running on http://localhost:4000`);
+});

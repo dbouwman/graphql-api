@@ -2,7 +2,7 @@ module.exports = `
 scalar JSON
 
 type Query {
-  info: String!
+  quickToken: String!
   item(id: ID!): Item
   searchItems(query: String!):[Item!]!
   user(username: String): User
@@ -31,6 +31,7 @@ type Item {
 type User {
   id: ID!
   username: String!
+  fullName: String!
   firstName: String!
   lastName: String!
   description: String
@@ -76,8 +77,10 @@ type Survey {
   thumbnail: String
   created: Float
   modified: Float
+  modifiedISO: String
   access: String
   formInfo: FormInfo
+  service: FeatureService
 }
 
 type FormInfo {
@@ -88,5 +91,19 @@ type FormInfo {
 type SurveySchedule {
   start: String
   end: String
+}
+
+type FeatureService {
+  id: ID!
+  title: String!
+  url: String!
+  layers: [Layer]!
+}
+
+type Layer {
+  id: ID!
+  name: String!
+  totalRecords: Int!
+  lastEntry: String
 }
 `;

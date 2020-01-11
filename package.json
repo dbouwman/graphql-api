@@ -16,6 +16,7 @@
     "@esri/arcgis-rest-portal": "^2.6.1",
     "@esri/arcgis-rest-request": "^2.6.1",
     "cross-fetch": "^3.0.4",
+    "dotenv": "^8.2.0",
     "graphql-yoga": "^1.18.3",
     "isomorphic-form-data": "^2.0.0",
     "node-fetch": "^2.6.0"

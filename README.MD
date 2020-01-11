@@ -14,3 +14,7 @@ https://graphql-api-env.q9u5eqjnx4.us-west-2.elasticbeanstalk.com/
 ## Questions
 - how to genericize parts of the graphs that are not searchable and/or vary greatly
   - is there a value in type-specific validations? webmap vs site etc?
+
+
+## Links
+https://www.howtographql.com/
