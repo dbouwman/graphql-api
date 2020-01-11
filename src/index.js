@@ -71,11 +71,92 @@ const logBytes = (content, name)  => {
   console.log(`${name} response: ${sizeInBytes}`);
 };
 
+const getDataset = (idOrSlug) => {
+  let url = `https://opendata.arcgis.com/api/v3/datasets?filter[slug]=${idOrSlug}`;
+  return fetch(url)
+  .then(res => res.json())
+  .then(r => {
+    // console.dir(r);
+    if (r.data[0]) {
+      // flatten into something more gql-ish
+      let dataset = r.data[0].attributes;
+      dataset.id = r.data[0].id;
+      return dataset;
+    } else {
+      return null;
+    }
+  })
+  .catch(e => console.error(e));
+}
+
+const getRelated = (idOrSlug, toField, ids) => {
+  return getDataset(idOrSlug)
+  .then((ds) => {
+    let wc = ids.map(id => `${toField}=${id}`).join(' OR ');
+    return queryFeatureLayer(ds.url, wc);
+  })
+}
+
+const queryFeatureLayer = (url, wc = '1=1') => {
+  let queryUrl =  `${url}/query?where=${wc}&f=json&outFields=*`;
+  // avert your eyes...
+  return fetch(queryUrl)
+  .then(r => r.json())
+  .then((resp) => {
+    console.log(`--------------- QFL ------------`)
+    console.log(queryUrl);
+    console.dir(resp);
+    console.log(`--------------`);
+    return resp.features.map(flattenFeature);
+  })
+  .catch((err) => {
+    console.log('Error in queryFeatureLayer ', err)
+  });
+}
+
+const getOwner = (username, ctx) => {
+  let ro = getSession(ctx) || {};
+  ro.username = username;
+  return getUser(ro)
+  .then(r => {
+    logBytes(r, 'Owner');        
+    return r;
+  })
+  .catch((err) => {
+    console.info(`Error: ${err}`);
+    return err
+  })
+} 
+
+const flattenFeature = (feature) => {
+  return feature.attributes;
+}
+
+const mergeByFields = (targetRecords, targetProp, joinRecords, joinProp) => {
+  return targetRecords.map((targetRec) => {
+    // get value of targetProp
+    let tpv = targetRec[targetProp];
+    // locate matching record in 
+    let match = joinRecords.find((r) => {
+      return r[joinProp] === tpv;
+    });
+    if (match) {
+      return Object.assign(targetRec, match);
+    } else {
+      return targetRec;
+    }
+  })
+}
+
 /**
  * Functions that run the queries
  */
 const resolvers = {
   Query: {
+    // get a dataset from hub v3 api
+    dataset: (parent, args = {}, ctx) => {
+      return getDataset(args.idOrSlug);
+    },
     // Fetch a fresh token for an embedded user - purely to make demoing simpler
     quickToken: () => {
       let session = new UserSession({
@@ -84,9 +165,9 @@ const resolvers = {
       });
       console.log(`Getting token for ${process.env.USER} from ${process.env.PORTAL}`);
       return session.getToken(process.env.PORTAL)
-      .then((result) => {
-        return `{ authorization: ${result} }`;
-      });
+        .then((result) => {
+          return `{ authorization: ${result} }`;
+        });
     },
     item: (parent, args = {}, ctx) => {
       let ro = getSession(ctx);
@@ -178,39 +259,43 @@ const resolvers = {
       });
     },
     survey: (parent, args, ctx) => {
-      console.log('\n\rGot request for survey');
       let ro = getSession(ctx);
       return getItem(args.id, ro);
     }
   },
+  Dataset: {
+    owner: (parent, args, ctx) => getOwner(parent.owner, ctx),
+    records: (parent, args, ctx) => {
+      let recs = [];
+      return queryFeatureLayer(parent.url, args.query)
+      .then((records) => {
+        // now we check if we have a join
+        if (args.withJoin) {
+          let fromField = args.from;
+          let toField = args.to;
+          let ids = records.map(r => r[args.from]);
+          return getRelated(args.withJoin, toField, ids)
+          .then((joinRecords) => {
+            // fold'em by fields... this is super horrible aweful
+            return mergeByFields(records, fromField, joinRecords, toField);
+          })
+        } else {
+          return records;
+        }
+      }) 
+    }
+  },
   Item: {
-    id: (parent) => parent.id,
     ownerUsername: (parent) => parent.owner,
-    owner: (parent, args, ctx) => {
-      let ro = getSession(ctx) || {};
-      ro.username = parent.owner;
-      return getUser(ro)
-      .then(r => {
-        logBytes(r, 'Owner');        
-        return r;
-      })
-      .catch((err) => {
-        console.info(`Error: ${err}`);
-        return err
-      })
-    },
-    title: (parent) => parent.title,
-    type: (parent) => parent.type,
-    description: (parent) => parent.description,
-    snippet: (parent) => parent.snippet,
-    tags: (parent) => parent.tags,
-    typeKeywords: (parent) => parent.typeKeywords,
+    owner: (parent, args, ctx) => getOwner(parent.owner, ctx),
+    createdISO: (parent) => new Date(parent.created).toISOString(),
+    modifiedISO: (parent) => new Date(parent.modified).toISOString(),
     properties: (parent) => parent.properties || {},
     groups: (parent, args, ctx) => {
       let ro = getSession(ctx);
       return getItemGroups(parent.id, ro)
         .then((response) => {
-          logBytes(r, 'Item Groups'); 
+          logBytes(response, 'Item Groups'); 
           return [...response.admin, ...response.member, ...response.other];
         });
     },
@@ -236,40 +321,16 @@ const resolvers = {
     }
   },
   User: {
-    id: (parent) => parent.id,
-    username: (parent) => parent.username,
-    firstName: (parent) => parent.firstName,
-    lastName: (parent) => parent.lastName,
-    description: (parent) => parent.description,
-    email: (parent) => parent.email,
+    // If the props map from the schema directly to the object
+    // we don't need to write the code...
+    // we just code for fields we want additional logic on
     orgId: (parent) => parent.orgId || 'not available',
-    role: (parent) => parent.role,
-    privileges: (parent) => parent.privileges,
-    access: (parent) => parent.access,
-    thumbnail: (parent) => parent.thumbnail,
-    tags: (parent) => parent.tags,
-    groups: (parent) => parent.groups
   },
   Group: {
-    id: (parent) => parent.id,
-    owner: (parent, args, ctx) => {
-      let ro = getSession(ctx) || {};
-      ro.username = parent.owner;
-      return getUser(ro)
-      .then(r => {
-        logBytes(r, 'Owner');     
-        return r;
-      })
-      .catch((err) => {
-        console.info(`Error: ${err}`);
-        return err
-      })
-    },
-    title: (parent) => parent.title,
-    description: (parent) => parent.description,
-    snippet: (parent) => parent.snippet,
-    tags: (parent) => parent.tags,
-    thumbnail: (parent) => parent.thumbnail,
+    owner: (parent, args, ctx) => getOwner(parent.owner, ctx),
+    createdISO: (parent) => new Date(parent.created).toISOString(),
+    modifiedISO: (parent) => new Date(parent.modified).toISOString(),
+   
     // We can extend the response objects
     // i.e. instead of relying on the client to understand how to construct 
     // the url to a thumbnail, we can do that in the resolver

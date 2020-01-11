@@ -11,6 +11,15 @@ type Query {
   searchGroups(query: String!):[Group!]
   surveys(type: String, groups: [String], q: String): [Survey!]!
   survey(id: ID!): Survey
+  dataset(idOrSlug: String!): Dataset
+}
+
+type Dataset {
+  id: ID!
+  name: String!
+  url: String
+  owner: User
+  records(query: String withJoin: String from: String to: String): [JSON]!
 }
 
 type Item {
@@ -23,9 +32,11 @@ type Item {
   snippet: String
   tags: [String]
   typeKeywords: [String]
-  properties: JSON, 
-  groups: [Group!],
+  properties: JSON 
+  groups: [Group!]
   teams: [Group!]
+  createdISO: String
+  modifiedISO: String
 }
 
 type User {
@@ -56,7 +67,9 @@ type Group {
   snippet: String
   tags: [String!]!
   created: Int
+  createdISO: String
   modified: Int
+  modifiedISO: String
   thumbnail: String
   thumbnailUrl: String!
   userMembership: GroupMembership

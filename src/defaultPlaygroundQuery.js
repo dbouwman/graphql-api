@@ -2,7 +2,7 @@ module.exports = `#
 # to make authenticated requests, paste this into the http headers below:
 # {"authorization":"your-token"}
 
-# Portal API Search
+# Simple Portal API Search
 query searchExample {
   searchItems(query: "Wetlands type: Web Map") {
     title
@@ -11,6 +11,7 @@ query searchExample {
   }
 }
 
+# Get an item and the groups it's shared to in one request
 query itemAndGroups {
   item(id: "8adef46d09304946a2f112a232de19b1") {
     title
@@ -21,7 +22,8 @@ query itemAndGroups {
   }
 }
 
-query graphTraversal {
+# Get an item, the owner's user, and the groups
+query itemOwnerGroup {
   item(id: "8adef46d09304946a2f112a232de19b1") {
     title
     owner {
@@ -36,14 +38,20 @@ query graphTraversal {
   }
 }
 
+# We can enhance the response 
+# in this case returning the full url to the group thumbnail
+# and the dates in ISO format
 query responseEnhancement {
   group(id: "8257e3d0f4fa47dd8eaae7472fdfdcfa") {
     title
     thumbnail
+    createdISO
+    modifiedISO
     thumbnailUrl
   }
 }
 
+# And this can be done for N+1's
 query itemSearchPlusOwners {
   searchItems(query: "type: Web Map") {
     title
@@ -52,16 +60,22 @@ query itemSearchPlusOwners {
       firstName
       lastName
     }
+    createdISO
+    modifiedISO
+    groups {
+      title
+      id
+    }
   }
 }
 
-#
-# Get a token formatted to the authorization header
-#
+# Helper: Get a token formatted to the authorization header
+# Uses creds embedded in server - !!! purely to make demos easier !!!
 query getAuthHeader {
   quickToken
 }
 
+# Get Surveys that are in a group
 query surveysInGroup {
   surveys(groups: ["816105f03f814b87af650fae11d7e72e"]) {
     id
@@ -70,6 +84,7 @@ query surveysInGroup {
   }
 }
 
+# Get Surveys in a Group, filtered by Type
 query draftSurveys {
   surveys(type: "draft", groups: ["816105f03f814b87af650fae11d7e72e"]) {
     id
@@ -86,6 +101,14 @@ query publishedSurveys {
   }
 }
 
+# Go Deep. 
+# - Get Surveys in a Group
+# For each: 
+#     - get the Owner User
+#     - get the backing service
+#     - get the layers in the service
+#     - get the total records in each layer
+#     - get the last entry in each layer
 query surveysInGroupDeep {
   surveys(groups: ["816105f03f814b87af650fae11d7e72e"]) {
     id
@@ -112,11 +135,6 @@ query surveysInGroupDeep {
   }
 }
 
-# ##########################################################
-# below are sample queries we can make to the graphql-api
-# the api will proxy those requests to the ago api making
-# only the requests necessary to fullfill the request
-# ##########################################################
 
 # this will make n + 1 requests to ago (one for the search and then one for the formInfo for each result)
 query surveysWithSchedules {
@@ -181,5 +199,36 @@ query surveyWithSummaryStats {
     }
   }
 }
+
+# Working with Datasets
+
+# When we join, we need to ensure that the query returns ~50 
+# records or the join request will bomb out. Fixable by 
+# switching to rest-js
+
+# Locate a dataset by slug
+query datasetRecords {
+  dataset(idOrSlug: "DCGIS::crashes-in-dc") {
+    name
+    url
+    owner {
+      fullName
+    }
+    records (query: "MAJORINJURIES_PEDESTRIAN=1")
+  }
+}
+
+# Query a dataset, by slug, and join results to another datase
+query datasetRecordsWithJoin {
+  dataset(idOrSlug: "DCGIS::crash-details-table") {
+    name
+    url
+    owner {
+      fullName
+    }
+    records (query: "IMPAIRED='Y' AND SPEEDING='Y' AND MAJORINJURY='Y'" withJoin: "DCGIS::crashes-in-dc" from: "CRIMEID" to: "CRIMEID")
+  }
+}
+
 
 `
